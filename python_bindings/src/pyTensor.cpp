@@ -79,6 +79,19 @@ static Tensor<T> fromNpArr(py::buffer_info& array_buffer, Format& fmt, bool copy
 }
 
 template<typename T>
+static void assignBuffer(py::array_t<T, py::array::f_style> &array, Tensor<T>& tensor, bool copy){
+
+  py::buffer_info array_buffer = array.request();
+  const ssize_t size = array_buffer.size;
+
+  TensorStorage& storage = tensor.getStorage();
+  void *buf_data = array_buffer.ptr;
+  Array::Policy policy = Array::Policy::UserOwns;
+  storage.setValues(makeArray(static_cast<T*>(buf_data), size, policy));
+  tensor.setStorage(storage);
+}
+
+template<typename T>
 static Tensor<T> fromNumpyF(py::array_t<T, py::array::f_style> &array, bool copy) {
 
   py::buffer_info array_buffer = array.request();
@@ -316,6 +329,7 @@ static void declareTensor(py::module &m, const std::string typestr) {
 
   m.def("fromNpF", &fromNumpyF<CType>);
   m.def("fromNpC", &fromNumpyC<CType>);
+  m.def("assignBuffer", &assignBuffer<CType>);
 
   m.def("fromSpMatrix", &fromSpMatrix<int, CType>);
 

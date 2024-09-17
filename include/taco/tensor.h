@@ -422,7 +422,11 @@ public:
   /// Compile the tensor expression.
   void compile();
 
+  void precompile();
+
   void compile(IndexStmt stmt, bool assembleWhileCompute=false);
+
+  void precompile(IndexStmt stmt, bool assembleWhileCompute=false);
 
   /// Assemble the tensor storage, including index and value arrays.
   void assemble();
@@ -532,6 +536,7 @@ protected:
   void insertUnchecked(
       const typename const_iterator<T,CType>::Coordinates& coordinate, 
       CType value);
+  std::shared_ptr<taco::ir::Module> globalModule;
 
 private:
   template <typename CType>
@@ -599,6 +604,8 @@ public:
   /// Create a tensor from a TensorBase instance. The Tensor and TensorBase
   /// objects will reference the same underlying tensor so it is a shallow copy.
   Tensor(const TensorBase& tensor);
+
+  void setModule(std::shared_ptr<ir::Module> module);
 
   /* --- Read Methods        --- */
 
@@ -1115,6 +1122,11 @@ Tensor<CType>::Tensor(const TensorBase& tensor) : TensorBase(tensor) {
   taco_uassert(tensor.getComponentType() == type<CType>()) <<
       "Assigning TensorBase with " << tensor.getComponentType() <<
       " components to a Tensor<" << type<CType>() << ">";
+}
+
+template<typename CType>
+void Tensor<CType>::setModule(std::shared_ptr<ir::Module> module) {
+  globalModule = module;
 }
 
 template <typename CType>

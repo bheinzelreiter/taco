@@ -641,6 +641,45 @@ void TensorBase::compile() {
   compile(stmt, content->assembleWhileCompute);
 }
 
+void TensorBase::precompile() {
+  Assignment assignment = getAssignment();
+  taco_uassert(assignment.defined())
+      << error::compile_without_expr;
+
+  struct CollisionFinder : public IndexNotationVisitor {
+    using IndexNotationVisitor::visit;
+
+    std::map<std::string,const TensorVar> tensorvars;
+
+    CollisionFinder() :tensorvars() {}
+
+    void visit(const AccessNode* node) {
+      Access access(node);
+      const TensorVar new_tensorvar = access.getTensorVar();
+      const std::string new_name = new_tensorvar.getName();
+      if(new_tensorvar.getId() != -1) {
+        auto found = tensorvars.find(new_name);
+        if(found != tensorvars.end() && found->second.getId() != -1) {
+          const TensorVar found_tensorvar = found->second;
+          taco_uassert(new_tensorvar.getId() == found_tensorvar.getId())
+              << error::compile_tensor_name_collision << " " << new_name;
+        } else {
+          tensorvars.insert(std::pair<std::string,const TensorVar>(new_name, new_tensorvar));
+        }
+      }
+    }
+  };
+  CollisionFinder dupes = CollisionFinder();
+  assignment.getLhs().accept(&dupes);
+  assignment.accept(&dupes);
+
+  IndexStmt stmt = makeConcreteNotation(makeReductionNotation(assignment));
+  stmt = reorderLoopsTopologically(stmt);
+  stmt = insertTemporaries(stmt);
+  stmt = parallelizeOuterLoop(stmt);
+  precompile(stmt, content->assembleWhileCompute);
+}
+
 void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
   if (!needsCompile()) {
     return;
@@ -651,8 +690,8 @@ void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
   IndexStmt stmtToCompile = stmt.concretize();
   stmtToCompile = scalarPromote(stmtToCompile);
 
-  if (!std::getenv("CACHE_KERNELS") ||
-      std::string(std::getenv("CACHE_KERNELS")) != "0") {
+  if (!globalModule && (!std::getenv("CACHE_KERNELS") ||
+      std::string(std::getenv("CACHE_KERNELS")) != "0")) {
     concretizedAssign = stmtToCompile;
     const auto cachedKernel = getComputeKernel(concretizedAssign);
     if (cachedKernel) {
@@ -661,16 +700,58 @@ void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
     }
   }
 
-  content->assembleFunc = lower(stmtToCompile, "assemble", true, false);
-  content->computeFunc = lower(stmtToCompile, "compute",  assembleWhileCompute, true);
+  content->assembleFunc = lower(stmtToCompile, "assemble_" + getName(), true, false);
+  content->computeFunc = lower(stmtToCompile, "compute_" + getName(),  assembleWhileCompute, true);
   // If we have to recompile the kernel, we need to create a new Module. Since
   // the module we are holding on to could have been retrieved from the cache,
   // we can't modify it.
-  content->module = make_shared<Module>();
+
+  auto module = globalModule;
+  if (!module) {
+    module = make_shared<Module>();
+  }
+
+  content->module = module;
   content->module->addFunction(content->assembleFunc);
   content->module->addFunction(content->computeFunc);
   content->module->compile();
   cacheComputeKernel(concretizedAssign, content->module);
+}
+
+void TensorBase::precompile(taco::IndexStmt stmt, bool assembleWhileCompute) {
+  if (!needsCompile()) {
+    return;
+  }
+  setNeedsCompile(false);
+
+  IndexStmt concretizedAssign = stmt;
+  IndexStmt stmtToCompile = stmt.concretize();
+  stmtToCompile = scalarPromote(stmtToCompile);
+
+  if (!globalModule && (!std::getenv("CACHE_KERNELS") ||
+      std::string(std::getenv("CACHE_KERNELS")) != "0")) {
+    concretizedAssign = stmtToCompile;
+    const auto cachedKernel = getComputeKernel(concretizedAssign);
+    if (cachedKernel) {
+      content->module = cachedKernel;
+      return;
+    }
+  }
+
+  content->assembleFunc = lower(stmtToCompile, "assemble_" + getName(), true, false);
+  content->computeFunc = lower(stmtToCompile, "compute_" + getName(),  assembleWhileCompute, true);
+  // If we have to recompile the kernel, we need to create a new Module. Since
+  // the module we are holding on to could have been retrieved from the cache,
+  // we can't modify it.
+
+  auto module = globalModule;
+  if (!module) {
+    module = make_shared<Module>();
+  }
+
+  content->module = module;
+  content->module->addFunction(content->assembleFunc);
+  content->module->addFunction(content->computeFunc);
 }
 
 taco_tensor_t* TensorBase::getTacoTensorT() {
@@ -817,7 +898,7 @@ void TensorBase::assemble() {
   }
 
   auto arguments = packArguments(*this);
-  content->module->callFuncPacked("assemble", arguments.data());
+  content->module->callFuncPacked("assemble_" + getName(), arguments.data());
 
   if (!content->assembleWhileCompute) {
     setNeedsAssemble(false);
@@ -828,9 +909,9 @@ void TensorBase::assemble() {
 
 void TensorBase::compute() {
   taco_uassert(!needsCompile()) << error::compute_without_compile;
-  if (!needsCompute()) {
-    return;
-  }
+//   if (!needsCompute()) {
+//     return;
+//   }
   setNeedsCompute(false);
   // Sync operand tensors if needed.
   auto operands = getTensors(getAssignment().getRhs());
@@ -840,7 +921,7 @@ void TensorBase::compute() {
   }
 
   auto arguments = packArguments(*this);
-  this->content->module->callFuncPacked("compute", arguments.data());
+  this->content->module->callFuncPacked("compute_" + getName(), arguments.data());
 
   if (content->assembleWhileCompute) {
     setNeedsAssemble(false);
@@ -910,8 +991,8 @@ void TensorBase::compileSource(std::string source) {
   stmt = reorderLoopsTopologically(stmt);
   stmt = insertTemporaries(stmt);
   stmt = parallelizeOuterLoop(stmt);
-  content->assembleFunc = lower(stmt, "assemble", true, false);
-  content->computeFunc = lower(stmt, "compute",  false, true);
+  content->assembleFunc = lower(stmt, "assemble_" + getName(), true, false);
+  content->computeFunc = lower(stmt, "compute_" + getName(),  false, true);
 
   stringstream ss;
   if (should_use_CUDA_codegen()) {
