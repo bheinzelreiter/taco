@@ -728,16 +728,6 @@ void TensorBase::precompile(taco::IndexStmt stmt, bool assembleWhileCompute) {
   IndexStmt stmtToCompile = stmt.concretize();
   stmtToCompile = scalarPromote(stmtToCompile);
 
-  if (!globalModule && (!std::getenv("CACHE_KERNELS") ||
-      std::string(std::getenv("CACHE_KERNELS")) != "0")) {
-    concretizedAssign = stmtToCompile;
-    const auto cachedKernel = getComputeKernel(concretizedAssign);
-    if (cachedKernel) {
-      content->module = cachedKernel;
-      return;
-    }
-  }
-
   content->assembleFunc = lower(stmtToCompile, "assemble_" + getName(), true, false);
   content->computeFunc = lower(stmtToCompile, "compute_" + getName(),  assembleWhileCompute, true);
   // If we have to recompile the kernel, we need to create a new Module. Since
