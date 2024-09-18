@@ -8,13 +8,19 @@
 #include "pyParsers.h"
 
 
-template<typename CType>
-static void compile_in_one_module(std::vector<taco::Tensor<CType>> &tensors) {
+static void compile_in_one_module(py::list &tensors) {
+  std::vector<taco::Tensor<double>*> cppTensors;
+  for(auto &tensor: tensors){
+    auto tensorBase = tensor.cast<taco::TensorBase*>();
+    auto castTensor = (taco::Tensor<double>*)tensorBase;
+    cppTensors.push_back(castTensor);
+  }
+
   auto module = std::make_shared<taco::ir::Module>();
 
-  for(auto &t : tensors) {
-    t.setModule(module);
-    t.precompile();
+  for(auto &t : cppTensors) {
+    t->setModule(module);
+    t->precompile();
   }
 
   module->compile();
@@ -28,7 +34,7 @@ void addHelpers(py::module &m) {
   py::options options;
   options.disable_function_signatures();
 
-  m.def("set_same_module", &compile_in_one_module<double>);
+  m.def("compile_in_one_module", &compile_in_one_module);
 
   m.def("get_num_threads", &taco::taco_get_num_threads, R"(
 get_num_threads()
