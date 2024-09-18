@@ -700,8 +700,8 @@ void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
     }
   }
 
-  assembleFuncName = "assemble_";
-  computeFuncName = "compute_";
+  assembleFuncName = "assemble";
+  computeFuncName = "compute";
 
   content->assembleFunc = lower(stmtToCompile, assembleFuncName, true, false);
   content->computeFunc = lower(stmtToCompile, computeFuncName,  assembleWhileCompute, true);
