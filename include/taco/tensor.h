@@ -537,6 +537,8 @@ protected:
       const typename const_iterator<T,CType>::Coordinates& coordinate, 
       CType value);
   std::shared_ptr<taco::ir::Module> globalModule;
+  std::string assembleFuncName;
+  std::string computeFuncName;
 
 private:
   template <typename CType>

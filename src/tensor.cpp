@@ -700,8 +700,11 @@ void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
     }
   }
 
-  content->assembleFunc = lower(stmtToCompile, "assemble_" + getName(), true, false);
-  content->computeFunc = lower(stmtToCompile, "compute_" + getName(),  assembleWhileCompute, true);
+  assembleFuncName = "assemble_";
+  computeFuncName = "compute_";
+
+  content->assembleFunc = lower(stmtToCompile, assembleFuncName, true, false);
+  content->computeFunc = lower(stmtToCompile, computeFuncName,  assembleWhileCompute, true);
   // If we have to recompile the kernel, we need to create a new Module. Since
   // the module we are holding on to could have been retrieved from the cache,
   // we can't modify it.
@@ -728,8 +731,11 @@ void TensorBase::precompile(taco::IndexStmt stmt, bool assembleWhileCompute) {
   IndexStmt stmtToCompile = stmt.concretize();
   stmtToCompile = scalarPromote(stmtToCompile);
 
-  content->assembleFunc = lower(stmtToCompile, "assemble_" + getName(), true, false);
-  content->computeFunc = lower(stmtToCompile, "compute_" + getName(),  assembleWhileCompute, true);
+  assembleFuncName = "assemble_" + getName();
+  computeFuncName = "compute_" + getName();
+
+  content->assembleFunc = lower(stmtToCompile, assembleFuncName, true, false);
+  content->computeFunc = lower(stmtToCompile, computeFuncName,  assembleWhileCompute, true);
   // If we have to recompile the kernel, we need to create a new Module. Since
   // the module we are holding on to could have been retrieved from the cache,
   // we can't modify it.
@@ -888,7 +894,7 @@ void TensorBase::assemble() {
   }
 
   auto arguments = packArguments(*this);
-  content->module->callFuncPacked("assemble_" + getName(), arguments.data());
+  content->module->callFuncPacked(assembleFuncName, arguments.data());
 
   if (!content->assembleWhileCompute) {
     setNeedsAssemble(false);
@@ -911,7 +917,7 @@ void TensorBase::compute() {
   }
 
   auto arguments = packArguments(*this);
-  this->content->module->callFuncPacked("compute_" + getName(), arguments.data());
+  this->content->module->callFuncPacked(computeFuncName, arguments.data());
 
   if (content->assembleWhileCompute) {
     setNeedsAssemble(false);
