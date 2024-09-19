@@ -579,6 +579,7 @@ const Access TensorBase::operator()() const {
 
 TensorBase::KernelsCache TensorBase::computeKernels;
 std::mutex TensorBase::computeKernelsMutex;
+TensorBase::ModuleCache TensorBase::moduleCache;
 
 std::shared_ptr<Module> TensorBase::getComputeKernel(const IndexStmt stmt) {
   computeKernelsMutex.lock();
@@ -593,6 +594,31 @@ std::shared_ptr<Module> TensorBase::getComputeKernel(const IndexStmt stmt) {
   }
   computeKernelsMutex.unlock();
   return nullptr;
+}
+
+void TensorBase::cacheFunctionNameForModule(const std::shared_ptr<Module> module,
+                                            const IndexStmt& stmt,
+                                            const std::string name) {
+  moduleCache.push_back({{module, stmt}, name});
+}
+
+std::string TensorBase::getCachedFunctionNameForModule(const std::shared_ptr<Module> module,
+                                                       const IndexStmt& stmt) {
+  for (const auto& keyValue : moduleCache) {
+    const auto& m = keyValue.first.first;
+    const auto& s = keyValue.first.second;
+    const auto& name = keyValue.second;
+
+    if (module != m) {
+      continue;
+    }
+
+    if (isomorphic(stmt, s)) {
+      return name;
+    }
+  }
+
+  return "";
 }
 
 void TensorBase::cacheComputeKernel(const IndexStmt stmt,
@@ -690,7 +716,10 @@ void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
   IndexStmt stmtToCompile = stmt.concretize();
   stmtToCompile = scalarPromote(stmtToCompile);
 
-  if (!globalModule && (!std::getenv("CACHE_KERNELS") ||
+  assembleFuncName = "assemble";
+  computeFuncName = "compute";
+
+  if ((!std::getenv("CACHE_KERNELS") ||
       std::string(std::getenv("CACHE_KERNELS")) != "0")) {
     concretizedAssign = stmtToCompile;
     const auto cachedKernel = getComputeKernel(concretizedAssign);
@@ -700,19 +729,13 @@ void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
     }
   }
 
-  assembleFuncName = "assemble";
-  computeFuncName = "compute";
-
   content->assembleFunc = lower(stmtToCompile, assembleFuncName, true, false);
   content->computeFunc = lower(stmtToCompile, computeFuncName,  assembleWhileCompute, true);
   // If we have to recompile the kernel, we need to create a new Module. Since
   // the module we are holding on to could have been retrieved from the cache,
   // we can't modify it.
 
-  auto module = globalModule;
-  if (!module) {
-    module = make_shared<Module>();
-  }
+  auto module = make_shared<Module>();
 
   content->module = module;
   content->module->addFunction(content->assembleFunc);
@@ -731,6 +754,22 @@ void TensorBase::precompile(taco::IndexStmt stmt, bool assembleWhileCompute) {
   IndexStmt stmtToCompile = stmt.concretize();
   stmtToCompile = scalarPromote(stmtToCompile);
 
+  auto module = globalModule;
+  if (!module) {
+    module = make_shared<Module>();
+  } else if ((!std::getenv("CACHE_KERNELS") ||
+      std::string(std::getenv("CACHE_KERNELS")) != "0")) {
+        concretizedAssign = stmtToCompile;
+        std::string cachedFunctionName = getCachedFunctionNameForModule(module, concretizedAssign);
+        
+        if (!cachedFunctionName.empty()) {
+          content->module = module;
+          assembleFuncName = "assemble_" + cachedFunctionName;
+          computeFuncName = "compute_" + cachedFunctionName;
+          return;
+        }
+  }
+
   assembleFuncName = "assemble_" + getName();
   computeFuncName = "compute_" + getName();
 
@@ -740,14 +779,11 @@ void TensorBase::precompile(taco::IndexStmt stmt, bool assembleWhileCompute) {
   // the module we are holding on to could have been retrieved from the cache,
   // we can't modify it.
 
-  auto module = globalModule;
-  if (!module) {
-    module = make_shared<Module>();
-  }
-
   content->module = module;
   content->module->addFunction(content->assembleFunc);
   content->module->addFunction(content->computeFunc);
+
+  TensorBase::cacheFunctionNameForModule(content->module, concretizedAssign, getName());
 }
 
 taco_tensor_t* TensorBase::getTacoTensorT() {
@@ -987,8 +1023,8 @@ void TensorBase::compileSource(std::string source) {
   stmt = reorderLoopsTopologically(stmt);
   stmt = insertTemporaries(stmt);
   stmt = parallelizeOuterLoop(stmt);
-  content->assembleFunc = lower(stmt, "assemble_" + getName(), true, false);
-  content->computeFunc = lower(stmt, "compute_" + getName(),  false, true);
+  content->assembleFunc = lower(stmt, assembleFuncName, true, false);
+  content->computeFunc = lower(stmt, computeFuncName,  false, true);
 
   stringstream ss;
   if (should_use_CUDA_codegen()) {

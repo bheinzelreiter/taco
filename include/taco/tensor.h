@@ -507,6 +507,12 @@ private:
   static std::shared_ptr<ir::Module> getHelperFunctions(
       const Format& format, Datatype ctype, const std::vector<int>& dimensions);
   static std::shared_ptr<ir::Module> getComputeKernel(const IndexStmt stmt);
+  static void cacheFunctionNameForModule(const std::shared_ptr<ir::Module> module,
+                                  const IndexStmt& stmt,
+                                  const std::string name);
+  static std::string getCachedFunctionNameForModule(
+    const std::shared_ptr<ir::Module> module, const IndexStmt& stmt);
+
   static void cacheComputeKernel(const IndexStmt stmt, 
                                  const std::shared_ptr<ir::Module> kernel);
 
@@ -556,8 +562,11 @@ private:
 
   typedef std::vector<std::pair<IndexStmt, 
                                 std::shared_ptr<ir::Module>>> KernelsCache;
+  typedef std::vector<std::pair<std::pair<std::shared_ptr<ir::Module>, IndexStmt>, 
+                                std::string>> ModuleCache;
   static KernelsCache computeKernels;
   static std::mutex computeKernelsMutex;
+  static ModuleCache moduleCache;
 };
 
 /// A reference to a tensor. Tensor object copies copies the reference, and
