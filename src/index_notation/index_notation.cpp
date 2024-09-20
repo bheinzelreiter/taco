@@ -208,7 +208,7 @@ struct Isomorphic : public IndexNotationVisitorStrict {
 
   bool check(TensorVar a, TensorVar b) {
     if (!util::contains(isoBTensor, a) && !util::contains(isoATensor, b)) {
-      if (a.getType() != b.getType() || a.getFormat() != b.getFormat()) {
+      if (a.getOrder() != b.getOrder() || a.getFormat() != b.getFormat()) {
         return false;
       }
       isoBTensor.insert({a, b});

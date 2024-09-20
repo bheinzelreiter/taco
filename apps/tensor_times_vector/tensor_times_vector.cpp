@@ -7,6 +7,9 @@ int main(int argc, char* argv[]) {
   Format csr({Dense,Sparse});
   Format csf({Sparse,Sparse,Sparse});
   Format  sv({Sparse});
+  Format d({Dense});
+  Format dd({Dense,Dense});
+  Format ddd({Dense,Dense,Dense});
 
   Tensor<double> A("A", {2,3},   csr);
   Tensor<double> B("B", {2,3,4}, csf);
@@ -25,9 +28,9 @@ int main(int argc, char* argv[]) {
   A(i,j) = B(i,j,k) * c(k);
 
 
-  Tensor<double> M("M", {2,3},   csr);
-  Tensor<double> N("N", {2,3,4}, csf);
-  Tensor<double> K("K", {4},     sv);
+  Tensor<double> M("M", {20,30},   csr);
+  Tensor<double> N("N", {20,30,40}, csf);
+  Tensor<double> K("K", {40},     sv);
 
   // Insert data into B and c
   N(0,0,0) = 1.0;
@@ -55,4 +58,5 @@ int main(int argc, char* argv[]) {
   M.evaluate();
 
   std::cout << A << std::endl;
+  std::cout << M << std::endl;
 }
