@@ -719,7 +719,7 @@ void TensorBase::compile(taco::IndexStmt stmt, bool assembleWhileCompute) {
   assembleFuncName = "assemble";
   computeFuncName = "compute";
 
-  if ((!std::getenv("CACHE_KERNELS") ||
+  if (false && (!std::getenv("CACHE_KERNELS") ||
       std::string(std::getenv("CACHE_KERNELS")) != "0")) {
     concretizedAssign = stmtToCompile;
     const auto cachedKernel = getComputeKernel(concretizedAssign);
@@ -946,18 +946,22 @@ void TensorBase::compute() {
 //   }
   setNeedsCompute(false);
   // Sync operand tensors if needed.
-  auto operands = getTensors(getAssignment().getRhs());
-  for (auto& operand : operands) {
-    operand.second.syncValues();
-    operand.second.removeDependentTensor(*this);
+  if (globalModule == nullptr) {
+    auto operands = getTensors(getAssignment().getRhs());
+    for (auto& operand : operands) {
+      operand.second.syncValues();
+      operand.second.removeDependentTensor(*this);
+    }
   }
 
-  auto arguments = packArguments(*this);
-  this->content->module->callFuncPacked(computeFuncName, arguments.data());
+  if (true || computeArguments.empty() || globalModule == nullptr) {
+    computeArguments = packArguments(*this);
+  }
+  this->content->module->callFuncPacked(computeFuncName, computeArguments.data());
 
   if (content->assembleWhileCompute) {
     setNeedsAssemble(false);
-    taco_tensor_t* tensorData = ((taco_tensor_t*)arguments[0]);
+    taco_tensor_t* tensorData = ((taco_tensor_t*)computeArguments[0]);
     content->valuesSize = unpackTensorData(*tensorData, *this);
   }
 }
