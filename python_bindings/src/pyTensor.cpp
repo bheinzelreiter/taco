@@ -159,6 +159,40 @@ static Tensor<T> fromSpMatrix(py::array_t<IdxType> &ind_ptr, py::array_t<IdxType
   return tensor;
 }
 
+template<typename IdxType, typename T>
+static Tensor<T> fromSpMatrix3D(py::array_t<IdxType> &ind_ptr, py::array_t<IdxType> &inds, py::array_t<T> &data,
+                                const std::vector<int> &dims){
+
+  py::buffer_info ind_ptr_buf = ind_ptr.request();
+  py::buffer_info inds_buf = inds.request();
+  py::buffer_info data_buf = data.request();
+
+  if(ind_ptr_buf.ndim != 1 || inds_buf.ndim != 1 || data_buf.ndim != 1) {
+    throw py::value_error("Data arrays must be 1D.");
+  }
+
+  IdxType *mat_ptr  = static_cast<IdxType *>(ind_ptr_buf.ptr);
+  IdxType *mat_ind  = static_cast<IdxType *>(inds_buf.ptr);
+  T *mat_data = static_cast<T *>(data_buf.ptr);
+
+  Tensor<T> tensor(dims, Format({dense, sparse, sparse}));
+  IdxType n_rows = ind_ptr_buf.size - 1;
+  for (IdxType row = 0; row < n_rows; ++row) {
+    for (IdxType idx = mat_ptr[row]; idx < mat_ptr[row + 1]; ++idx) {
+      IdxType col = mat_ind[idx];
+      T entry = mat_data[idx];
+      auto col1 = col / dims[2];
+      auto col2 = col % dims[2];
+
+      tensor.insert({row, col1, col2}, entry);
+    }
+  }
+
+  tensor.pack();
+
+  return tensor;
+}
+
 template<typename T>
 static py::tuple toSpMatrix(Tensor<T> &tensor, bool tocsr) {
   if(tensor.getOrder() != 2) {
@@ -230,6 +264,7 @@ static py::tuple toSpMatrix(Tensor<T> &tensor, bool tocsr) {
 
   return py::make_tuple(ptr_arr, idx_arr, val_arr);
 }
+
 
 template<typename CType, typename idxVar>
 static inline Access accessGetter(Tensor<CType>& tensor, idxVar& var) {
@@ -332,6 +367,7 @@ static void declareTensor(py::module &m, const std::string typestr) {
   m.def("assignBuffer", &assignBuffer<CType>);
 
   m.def("fromSpMatrix", &fromSpMatrix<int, CType>);
+  m.def("fromSpMatrix3D", &fromSpMatrix3D<int, CType>);
 
   std::string pyClassName = std::string("Tensor") + typestr;
   py::class_<typedTensor, TensorBase>(m, pyClassName.c_str(), py::buffer_protocol())
