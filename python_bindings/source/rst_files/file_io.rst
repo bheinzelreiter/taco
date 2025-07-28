@@ -24,6 +24,7 @@ file name.
    from_array
    from_sp_csc
    from_sp_csr
+   from_sp_csr_3d
    to_array
    to_sp_csc
    to_sp_csr

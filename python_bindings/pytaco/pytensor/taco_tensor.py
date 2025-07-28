@@ -551,6 +551,13 @@ def from_sp_csr(matrix, copy=True):
     """
     return _from_matrix(matrix, copy, True)  # true if csr false otherwise
 
+def from_sp_csr_3d(matrix, dimensions):
+    if not matrix.has_sorted_indices:
+        matrix = matrix.sorted_indices()
+
+    indptr, indices, data = matrix.indptr, matrix.indices, matrix.data
+    shape = matrix.shape
+    return tensor._fromCppTensor(_cm.fromSpMatrix3D(indptr, indices, data, dimensions))
 
 def from_sp_csc(matrix, copy=True):
     """
