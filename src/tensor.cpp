@@ -1057,8 +1057,7 @@ TensorBase::getHelperFunctions(const Format& format, Datatype ctype,
       util::ReverseConstIterable<TensorBase::HelperFuncsCache>(helperFunctions);
   for (const auto& helperFuncs : helperFunctionsReverse) {
     if (std::get<0>(helperFuncs) == format &&
-        std::get<1>(helperFuncs) == ctype &&
-        std::get<2>(helperFuncs) == dimensions) {
+        std::get<1>(helperFuncs) == ctype) {
       // If helper functions had already been generated for specified tensor
       // format and type, then use cached version.
       const auto helperFuncsModule = std::get<3>(helperFuncs);
